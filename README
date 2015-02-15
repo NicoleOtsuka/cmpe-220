@@ -1,0 +1,36 @@
+The cpu.c is the BEST CPU program that supports MIPS ISA machine
+code execution. The target of this BEST CPU is to support all
+MIPS instructions so that user can use cross compiler to compile
+user program to MIPS ISA machine code.
+
+The program supports machine code file input so as to run user
+defined program. The machine code should be put into a file
+without any space, tab and comments. Each line of it should be
+32-bit HEX code. Example (same as in 'test' file):
+2009003f
+01205021
+ad490000
+8d4b0000
+2008003e
+20090003
+ad090000
+8d100000
+8d520000
+ad120000
+ad500000
+
+# test is the machine code file; test.asm is MIPS assembly code
+
+When launching the CPU, use the following commands to execute:
+ - Without assigning any machine code file, run default test case:
+	./cpu
+
+ - With assigning a machine code file, run the input test case:
+	./cpu test
+	./cpu bootloader
+
+DEBUG:
+ - There are a few define inside the cpu.c that gives debugging info:
+	#define		value		meaning
+	DEBUG		0 or 1		Turn OFF or ON debugging information
+	DEBUG_LEVEL	0 ~ 5		0 - highest level; 5 - lowest level
