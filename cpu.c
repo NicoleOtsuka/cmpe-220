@@ -80,7 +80,7 @@ struct control_signals {
 
 static void dump_reg_file(struct best_cpu *cpu, int mode)
 {
-	u32 *reg = &cpu->reg[cpu->reg_addr];
+	s32 *reg = &cpu->reg[cpu->reg_addr];
 	u32 i;
 
 	switch (mode) {
@@ -99,7 +99,7 @@ static void dump_reg_file(struct best_cpu *cpu, int mode)
 
 static void dump_data_mem(struct best_cpu *cpu, int mode)
 {
-	u32 *mem = &cpu->mem[cpu->mem_addr];
+	s32 *mem = &cpu->mem[cpu->mem_addr];
 	u32 i;
 
 	switch (mode) {
@@ -308,11 +308,11 @@ bool alu_exec(u32 control, s32 srcA, s32 srcB, s32 *result)
 int running(struct best_cpu *cpu)
 {
 	struct control_signals signals;
+	s32 mem_read_data = 0;
 	s32 *reg = cpu->reg;
 	s32 *mem = cpu->mem;
 	u32 opcode, funct;
 	s32 shamt, target;
-	s32 mem_read_data;
 	u32 rs, rt, rd;
 	s32 alu_result;
 	s32 srcA, srcB;
@@ -397,7 +397,7 @@ int main(int argc, char *argv[])
 	struct best_cpu *cpu;
 	FILE *codefile;
 	char code[64];
-	int i, ret;
+	int i = 0, ret;
 
 	cpu = malloc(sizeof(*cpu));
 	if (!cpu)
