@@ -116,13 +116,6 @@ static void dump_data_mem(struct best_cpu *cpu, int mode)
 	}
 }
 
-int control_unit_alu_decoder(struct control_signals *signals, u32 funct)
-{
-
-
-	return 0;
-}
-
 int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 {
 	u8 alu_op = ALU_OP_ADD;
