@@ -295,8 +295,6 @@ bool alu_exec(u32 control, s32 srcA, s32 srcB, s32 *result)
 	/* TODO complete the whole ALU function */
 	*result = srcA + srcB;
 
-	/* A test for patch */
-
 	return (*result == 0);
 }
 
