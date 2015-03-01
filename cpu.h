@@ -219,6 +219,12 @@
 /* Control Unit Signals */
 #define ALU_OP_ADD	0x0
 #define ALU_OP_SUB	0x1
+#define ALU_OP_MUL	0x2
+#define ALU_OP_DIV	0x3
+#define ALU_OP_AND	0x4
+#define ALU_OP_OR	0x5
+#define ALU_OP_XOR	0x6
+#define ALU_OP_SLT	0x7
 #define ALU_OP_RTYPE	0x10
 
 #define ALU_CTL_AND	0x0
@@ -226,6 +232,7 @@
 #define ALU_CTL_ADD	0x2
 #define ALU_CTL_MUL	0x3
 #define ALU_CTL_DIV	0x4
+#define ALU_CTL_XOR	0x5
 #define ALU_CTL_SUB	0x6
 #define ALU_CTL_SLT	0x7
 
