@@ -53,6 +53,24 @@ static u32 test[24] = {
 	(OP_LW | RS_SET(REG_T2) | RT_SET(REG_S2) | IMM_SET(0x0)),
 	(OP_SW | RS_SET(REG_T0) | RT_SET(REG_S2) | IMM_SET(0x0)),
 	(OP_SW | RS_SET(REG_T2) | RT_SET(REG_S0) | IMM_SET(0x0)),
+	/* Pause one cycle */
+	(NOP),
+	/* Test logic operations */
+	(FUNCT_OR | RS_SET(REG_T0) | RT_SET(REG_T1) | RD_SET(REG_T4)),
+	(FUNCT_AND | RS_SET(REG_T0) | RT_SET(REG_T1) | RD_SET(REG_T5)),
+	(FUNCT_XOR | RS_SET(REG_T0) | RT_SET(REG_T1) | RD_SET(REG_T6)),
+	(FUNCT_SLT | RS_SET(REG_T0) | RT_SET(REG_T1) | RD_SET(REG_T7)),
+	(FUNCT_SLT | RS_SET(REG_T1) | RT_SET(REG_T0) | RD_SET(REG_T7)),
+	(OP_ORI | RS_SET(REG_T0) | RT_SET(REG_T4) | IMM_SET(0x3)),
+	(OP_ANDI | RS_SET(REG_T0) | RT_SET(REG_T5) | IMM_SET(0x3)),
+	(OP_XORI | RS_SET(REG_T0) | RT_SET(REG_T6) | IMM_SET(0x3)),
+	(OP_SLTI | RS_SET(REG_T0) | RT_SET(REG_T7) | IMM_SET(0x3)),
+	(OP_SLTI | RS_SET(REG_T0) | RT_SET(REG_T7) | IMM_SET(0x4f)),
+	
+	/* Test division operation */
+	(OP_ADDI | RS_SET(REG_ZERO) | RT_SET(REG_T1) | IMM_SET(0x10)),
+	(OP_ADDI | RS_SET(REG_ZERO) | RT_SET(REG_T2) | IMM_SET(0x2)),
+	(FUNCT_DIV | RS_SET(REG_T1) | RT_SET(REG_T2)),
 	/* SHUTDOWN CPU */
 	0xffffffff,
 };
@@ -160,19 +178,29 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 		/* TODO activate corresponding signals */
 		break;
 	case OP_SLTI:
-		/* TODO activate corresponding signals */
+		signals->reg_write = true;
+		signals->alu_src = true;
+		alu_op = ALU_OP_SLT;
 		break;
 	case OP_SLTIU:
-		/* TODO activate corresponding signals */
+		signals->reg_write = true;
+		signals->alu_src = true;
+		alu_op = ALU_OP_SLT;
 		break;
 	case OP_ANDI:
-		/* TODO activate corresponding signals */
+		signals->reg_write = true;
+		signals->alu_src = true;
+		alu_op = ALU_OP_AND;
 		break;
 	case OP_ORI:
-		/* TODO activate corresponding signals */
+		signals->reg_write = true;
+		signals->alu_src = true;
+		alu_op = ALU_OP_OR;
 		break;
 	case OP_XORI:
-		/* TODO activate corresponding signals */
+		signals->reg_write = true;
+		signals->alu_src = true;
+		alu_op = ALU_OP_XOR;
 		break;
 	case OP_LUI:
 		/* TODO activate corresponding signals */
@@ -205,6 +233,24 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 		break;
 	case ALU_OP_SUB:
 		signals->alu_control = ALU_CTL_SUB;
+		break;
+	case ALU_OP_MUL:
+		signals->alu_control = ALU_CTL_MUL;
+		break;
+	case ALU_OP_DIV:
+		signals->alu_control = ALU_CTL_DIV;
+		break;
+	case ALU_OP_AND:
+		signals->alu_control = ALU_CTL_AND;
+		break;
+	case ALU_OP_OR:
+		signals->alu_control = ALU_CTL_OR;
+		break;
+	case ALU_OP_XOR:
+		signals->alu_control = ALU_CTL_XOR;
+		break;
+	case ALU_OP_SLT:
+		signals->alu_control = ALU_CTL_SLT;
 		break;
 	case ALU_OP_RTYPE:
 		switch (funct) {
@@ -266,7 +312,7 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 			signals->alu_control = ALU_CTL_OR;
 			break;
 		case FUNCT_XOR:
-			/* TODO activate the alu_control signals */
+			signals->alu_control = ALU_CTL_XOR;
 			break;
 		case FUNCT_SLT:
 			signals->alu_control = ALU_CTL_SLT;
@@ -292,10 +338,77 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 /* Return signal zero as a flag for branch */
 bool alu_exec(u32 control, s32 srcA, s32 srcB, s32 *result)
 {
-	/* TODO complete the whole ALU function */
-	*result = srcA + srcB;
+	switch (control) {
+	case ALU_CTL_ADD:
+		/* TODO Replace it with arithmatic operation */
+		*result = srcA + srcB;
+		break;
+	case ALU_CTL_SUB:
+		/* TODO Replace it with arithmatic operation */
+		*result = srcA - srcB;
+		break;
+	case ALU_CTL_MUL:
+		/* TODO Replace it with arithmatic operation */
+		*result = srcA * srcB;
+		break;
+	case ALU_CTL_DIV:
+		s32 alu_div(s32 srcA, s32 srcB){
+    			s32 quotient = 0;
+    			s32 remainder = 0;
+    			s32 buffer;
+			s32 temp1, temp2, temp3;;
+    
+    			if (divisor == 0) {
+        			return 0;
+    			}
+    
+    			for (s32 index = 0; index < 32; index++) {
+        			remainder = (remainder << 1) | ((srcA >> 31) & 0x1);
+        			if (remainder < srcB) {
+            				quotient = (quotient << 1) | 0x0;
+        			} else {
+        				quotient = (quotient << 1) | 0x1;
+            
+            				buffer = ~srcB;
+            				temp3 = 1;
+            				do{
+                				temp1 = buffer & temp3;
+                				temp2 = buffer ^ temp3;
+                				buffer = temp1 << 1;
+                				temp3 = temp2;
+            				} while(temp1);
+            				buffer = temp2;
+            
+            				do{
+        	 				temp1 = remainder & buffer;
+                				temp2 = remainder ^ buffer;
+                				remainder = temp1 << 1;
+                				buffer = temp2;
+            				} while(temp1);
+            				remainder = temp2;
+        			}
+        			srcA = srcA << 1;
+    			}
+    			return quotient;
+		}
 
-	/* A test for patch */
+		*result = srcA / srcB;
+		break;
+	case ALU_CTL_AND:
+		*result = srcA & srcB;
+		break;
+	case ALU_CTL_OR:
+		*result = srcA | srcB;
+		break;
+	case ALU_CTL_XOR:
+		*result = srcA ^ srcB;
+		break;
+	case ALU_CTL_SLT:
+		*result = srcA < srcB;
+		break;
+	default:
+		break;
+	}
 
 	return (*result == 0);
 }
