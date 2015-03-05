@@ -70,10 +70,22 @@ static u32 test[24] = {
 	0xffffffff,
 };
 
+struct best_cpu_flags {
+	bool zero;
+	bool sign;
+	bool carry;
+	bool segment;
+	bool overflow;
+	bool divbyzero;
+	bool unknowinstr;
+};
+
 struct best_cpu {
+	struct best_cpu_flags flags;
 	s32 mem[MEM_MAX];
 	s32 mem_data;
 	u32 mem_addr;
+	s32 reg_lo, reg_hi;
 	s32 reg[REG_MAX];
 	s32 reg_data;
 	u32 reg_addr;
@@ -88,8 +100,27 @@ struct control_signals {
 	bool reg_dst;
 	bool reg_write;
 	bool jump;
+	bool alu_unsigned;
 	u8 alu_control;
 };
+
+static void dump_cpu_flags(struct best_cpu_flags *flags)
+{
+	if (flags->zero)
+		pr_debug("\tZero flag raised\n");
+	if (flags->sign)
+		pr_debug("\tSign flag raised\n");
+	if (flags->carry)
+		pr_debug("\tCarry flag raised\n");
+	if (flags->segment)
+		pr_debug("\tSegment flag raised\n");
+	if (flags->overflow)
+		pr_debug("\tOverflow flag raised\n");
+	if (flags->divbyzero)
+		pr_debug("\tDivided by zero flag raised\n");
+	if (flags->unknowinstr)
+		pr_debug("\tUnknown instruction flag raised\n");
+}
 
 static void dump_reg_file(struct best_cpu *cpu, int mode)
 {
@@ -129,7 +160,9 @@ static void dump_data_mem(struct best_cpu *cpu, int mode)
 	}
 }
 
-int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
+int control_unit_decoder(struct best_cpu_flags *flags,
+			 struct control_signals *signals,
+			 u32 opcode, u32 funct)
 {
 	u8 alu_op = ALU_OP_ADD;
 
@@ -168,9 +201,13 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 	case OP_ADDI:
 		signals->reg_write = true;
 		signals->alu_src = true;
+		alu_op = ALU_OP_ADD;
 		break;
 	case OP_ADDIU:
-		/* TODO activate corresponding signals */
+		signals->reg_write = true;
+		signals->alu_src = true;
+		signals->alu_unsigned = true;
+		alu_op = ALU_OP_ADD;
 		break;
 	case OP_SLTI:
 		signals->reg_write = true;
@@ -180,6 +217,7 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 	case OP_SLTIU:
 		signals->reg_write = true;
 		signals->alu_src = true;
+		signals->alu_unsigned = true;
 		alu_op = ALU_OP_SLT;
 		break;
 	case OP_ANDI:
@@ -216,7 +254,7 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 		signals->mem_write = true;
 		break;
 	default:
-		/* TODO may need to mark some flags */
+		flags->unknowinstr = true;
 		printf("\tUndefined insuction! opcode: %x\n", opcode);
 		return -EINVAL;
 	}
@@ -270,35 +308,41 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 		case FUNCT_SYSCALL:
 			/* TODO activate the alu_control signals */
 			break;
-		case FUNCT_MFHI:
-			/* TODO activate the alu_control signals */
-			break;
-		case FUNCT_MFLO:
-			/* TODO activate the alu_control signals */
-			break;
 		case FUNCT_MULT:
-			/* TODO activate the alu_control signals */
+			signals->reg_write = false;
+			signals->reg_dst = false;
+			signals->alu_control = ALU_CTL_MUL;
 			break;
 		case FUNCT_MULTU:
-			/* TODO activate the alu_control signals */
+			signals->reg_write = false;
+			signals->reg_dst = false;
+			signals->alu_control = ALU_CTL_MUL;
+			signals->alu_unsigned = true;
 			break;
 		case FUNCT_DIV:
-			/* TODO activate the alu_control signals */
+			signals->reg_write = false;
+			signals->reg_dst = false;
+			signals->alu_control = ALU_CTL_DIV;
 			break;
 		case FUNCT_DIVU:
-			/* TODO activate the alu_control signals */
+			signals->reg_write = false;
+			signals->reg_dst = false;
+			signals->alu_control = ALU_CTL_DIV;
+			signals->alu_unsigned = true;
 			break;
 		case FUNCT_ADD:
 			signals->alu_control = ALU_CTL_ADD;
 			break;
 		case FUNCT_ADDU:
 			signals->alu_control = ALU_CTL_ADD;
+			signals->alu_unsigned = true;
 			break;
 		case FUNCT_SUB:
 			signals->alu_control = ALU_CTL_SUB;
 			break;
 		case FUNCT_SUBU:
 			signals->alu_control = ALU_CTL_SUB;
+			signals->alu_unsigned = true;
 			break;
 		case FUNCT_AND:
 			signals->alu_control = ALU_CTL_AND;
@@ -314,15 +358,16 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 			break;
 		case FUNCT_SLTU:
 			signals->alu_control = ALU_CTL_SLT;
+			signals->alu_unsigned = true;
 			break;
 		default:
-			/* TODO may need to mark some flags */
+			flags->unknowinstr = true;
 			printf("\tUndefined insuction! funct: %x\n", funct);
 			return -EINVAL;
 		}
 		break;
 	default:
-		/* TODO may need to mark some flags */
+		flags->unknowinstr = true;
 		printf("\tUndefined insuction! alu_op:%x\n", alu_op);
 		return -EINVAL;
 	}
@@ -330,25 +375,138 @@ int control_unit_decoder(struct control_signals *signals, u32 opcode, u32 funct)
 	return 0;
 }
 
-/* Return signal zero as a flag for branch */
-bool alu_exec(u32 control, s32 srcA, s32 srcB, s32 *result)
+bool alu_exec_add(s32 srcA, s32 srcB, s32 *result)
 {
+	int c = 0;
+
+	while (srcB) {
+		c = srcA & srcB;
+		srcA ^= srcB;
+		srcB = c << 1;
+	}
+
+	*result = srcA;
+
+	return (c != 0);
+}
+
+bool alu_exec_sub(s32 srcA, s32 srcB, s32 *result)
+{
+	int c = 0;
+
+	*result = ~srcB;
+	c = alu_exec_add(1, *result, result);
+	c = alu_exec_add(srcA, *result, result);
+
+	return (c != 0);
+}
+
+bool alu_exec_mul(s32 srcA, s32 srcB, s32 *reg_lo)
+{
+	*reg_lo = 0;
+
+	while (srcB) {
+		if (srcB & 0x1)
+			alu_exec_add(*reg_lo, srcA, reg_lo);
+		srcA <<= 1;
+		srcB >>= 1;
+	}
+
+	return (*reg_lo == 0);
+}
+
+bool alu_exec_div(bool alu_unsigned, s32 srcA, s32 srcB,
+		  s32 *reg_lo, s32 *reg_hi)
+{
+	s32 temp1, temp2, temp3;
+	bool signedA = false;
+	bool signedB = false;
+	s32 remainder = 0;
+	s32 quotient = 0;
+	s32 buffer;
+	s32 i;
+
+	/* Record the sign bits and make operands positive */
+	if (!alu_unsigned) {
+		if (srcA < 0) {
+			alu_exec_sub(0, srcA, &srcA);
+			signedA = true;
+		}
+		if (srcB < 0) {
+			alu_exec_sub(0, srcB, &srcB);
+			signedB = true;
+		}
+	}
+
+	for (i = 0; i < ISA_LEN; i++) {
+		remainder = (remainder << 1) | ((srcA >> (ISA_LEN - 1)) & 0x1);
+		if (remainder < srcB) {
+			quotient = (quotient << 1) | 0x0;
+		} else {
+			quotient = (quotient << 1) | 0x1;
+
+			buffer = ~srcB;
+			temp3 = 1;
+			do {
+				temp1 = buffer & temp3;
+				temp2 = buffer ^ temp3;
+				buffer = temp1 << 1;
+				temp3 = temp2;
+			} while (temp1);
+
+			buffer = temp2;
+
+			do {
+				temp1 = remainder & buffer;
+				temp2 = remainder ^ buffer;
+				remainder = temp1 << 1;
+				buffer = temp2;
+			} while (temp1);
+			remainder = temp2;
+		}
+		srcA = srcA << 1;
+	}
+
+	/* Restore the sign bit for remainder and result */
+	if (signedA)
+		*reg_hi = 0 - remainder;
+	else
+		*reg_hi = remainder;
+
+	if ((signedA && signedB) || (!signedA && !signedB))
+		*reg_lo = quotient;
+	else
+		*reg_lo = 0 - quotient;
+
+	return (*reg_lo == 0);
+}
+
+void alu_exec(struct best_cpu_flags *flags, bool alu_unsigned, u32 control,
+	      s32 srcA, s32 srcB, s32 *result, s32 *reg_lo, s32 *reg_hi)
+{
+	bool carry = false;
+	bool zero = false;
+
 	switch (control) {
 	case ALU_CTL_ADD:
-		/* TODO Replace it with arithmatic operation */
-		*result = srcA + srcB;
+		/* Bitwise addition does not care about sign */
+		carry = alu_exec_add(srcA,  srcB, result);
 		break;
 	case ALU_CTL_SUB:
-		/* TODO Replace it with arithmatic operation */
-		*result = srcA - srcB;
+		/* Bitwise subtraction does not care about sign */
+		carry = alu_exec_sub(srcA,  srcB, result);
 		break;
 	case ALU_CTL_MUL:
-		/* TODO Replace it with arithmatic operation */
-		*result = srcA * srcB;
+		/* Bitwise multiplication does not care about sign */
+		zero = alu_exec_mul(srcA,  srcB, reg_lo);
 		break;
 	case ALU_CTL_DIV:
-		/* TODO Replace it with arithmatic operation */
-		*result = srcA / srcB;
+		/* Bypass divided by zero */
+		if (srcB == 0) {
+			flags->divbyzero = true;
+			return;
+		}
+		zero = alu_exec_div(alu_unsigned, srcA,  srcB, reg_lo, reg_hi);
 		break;
 	case ALU_CTL_AND:
 		*result = srcA & srcB;
@@ -360,17 +518,28 @@ bool alu_exec(u32 control, s32 srcA, s32 srcB, s32 *result)
 		*result = srcA ^ srcB;
 		break;
 	case ALU_CTL_SLT:
-		*result = srcA < srcB;
+		if (alu_unsigned)
+			*result = (u32)srcA < (u32)srcB;
+		else
+			*result = srcA < srcB;
 		break;
 	default:
 		break;
 	}
 
-	return (*result == 0);
+	flags->zero = (*result == 0) | zero;
+	flags->sign = *result < 0;
+	if (alu_unsigned)
+		flags->carry = carry;
+	flags->overflow = (srcA > 0 && srcB > 0 && *result < 0) ||
+			  (srcA < 0 && srcB < 0 && *result >= 0);
+
+	return;
 }
 
 int running(struct best_cpu *cpu)
 {
+	struct best_cpu_flags *flags = &cpu->flags;
 	struct control_signals signals;
 	s32 mem_read_data = 0;
 	s32 *reg = cpu->reg;
@@ -381,7 +550,6 @@ int running(struct best_cpu *cpu)
 	s32 alu_result;
 	s32 srcA, srcB;
 	s32 result;
-	u32 zero;
 	s32 imm;
 	u32 ins;
 	int ret;
@@ -390,6 +558,8 @@ int running(struct best_cpu *cpu)
 	for (cpu->pc = MEM_INSTR_START; cpu->pc <= MEM_INSTR_END; cpu->pc++) {
 		/* Fetch the instruction being pointed by PC */
 		ins = cpu->mem[cpu->pc];
+		/* Reset all flags */
+		memset(flags, 0, sizeof(*flags));
 
 		pr_debug("Executing Machine Code: 0x%x@I-MEM Addr:0x%x\n",
 			 ins, cpu->pc);
@@ -410,19 +580,49 @@ int running(struct best_cpu *cpu)
 		imm = IMM_GET(ins);
 		target = TARGET_GET(ins);
 
+		/* Sign extension for immediate number */
+		if (imm & 0x8000)
+			imm |= 0xffff0000;
+
+		/* Direct copy for LO and HI registers */
+		switch (opcode | funct) {
+		case FUNCT_MFLO:
+			cpu->reg_addr = rd;
+			cpu->reg_data = cpu->reg[rd];
+			signals.reg_write = true;
+			reg[rd] = cpu->reg_lo;
+			goto out_of_stage;
+		case FUNCT_MFHI:
+			cpu->reg_addr = rd;
+			cpu->reg_data = cpu->reg[rd];
+			signals.reg_write = true;
+			reg[rd] = cpu->reg_hi;
+			goto out_of_stage;
+		default:
+			break;
+		}
+
 		/* Parse the instruction and activate corresponding signals */
-		ret = control_unit_decoder(&signals, opcode, funct);
+		ret = control_unit_decoder(flags, &signals, opcode, funct);
 		if (ret)
 			return ret;
 
 		srcA = reg[rs];
 		srcB = signals.alu_src ? imm : reg[rt];
 
-		zero = alu_exec(signals.alu_control, srcA, srcB, &alu_result);
+		alu_exec(flags, signals.alu_unsigned, signals.alu_control,
+			 srcA, srcB, &alu_result, &cpu->reg_lo, &cpu->reg_hi);
 
 		/* Back up for back trace */
 		cpu->mem_addr = alu_result;
 		cpu->mem_data = mem[alu_result];
+
+		if ((signals.mem_write || signals.mem_to_reg) &&
+		    alu_result < MEM_DATA_START)
+			flags->segment = true;
+
+		if (flags->segment)
+			return -EINVAL;
 
 		/* Memory operations */
 		if (signals.mem_write)
@@ -446,11 +646,14 @@ int running(struct best_cpu *cpu)
 			reg[cpu->reg_addr] = result;
 		}
 
+out_of_stage:
 		if (signals.mem_write)
 			dump_data_mem(cpu, DUMP_POLICY);
 
 		if (signals.reg_write)
 			dump_reg_file(cpu, DUMP_POLICY);
+
+		dump_cpu_flags(flags);
 	}
 
 	return 0;
@@ -498,6 +701,8 @@ int main(int argc, char *argv[])
 
 err:
 	printf("======CPU trapped!\n");
+	if (cpu->flags.segment)
+		printf("\tCPU: Segmentation Fault!\n");
 	free(cpu);
 
 	return -EINVAL;
