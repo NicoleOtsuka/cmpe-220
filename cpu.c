@@ -28,8 +28,8 @@
 #define DUMP_POLICY		(DEBUG_LEVEL == 0 ? DUMP_ALL : DUMP_CHANGED)
 
 static u32 test[24] = {
-	/* Test immediate number: addi $t1, $zero, 0x3f */
-	(OP_ADDI | RS_SET(REG_ZERO) | RT_SET(REG_T1) | IMM_SET(0x3f)),
+	/* Test immediate number: addi $t1, $zero, 0x7c */
+	(OP_ADDI | RS_SET(REG_ZERO) | RT_SET(REG_T1) | IMM_SET(0x7c)),
 	/* Test Register to Register: addu $t2, $t1, $zero */
 	(RS_SET(REG_T1) | RT_SET(REG_ZERO) | RD_SET(REG_T2) | FUNCT_ADDU),
 	/* Test Register to Memory: sw $t1, 0x0($t2) */
@@ -37,12 +37,12 @@ static u32 test[24] = {
 	/* Test Memory to Register: lw $t3, 0x0($t2) */
 	(OP_LW | RS_SET(REG_T2) | RT_SET(REG_T3) | IMM_SET(0x0)),
 	/*
-	 * Now we have value 0x3f in Mem Addr 0x3f, set another one:
-	 * addi $t0, $zero, 0x3e #addr; addi $t1, $zero, 0x3 #data
+	 * Now we have value 0x7c in Mem Addr 0x7c, set another one:
+	 * addi $t0, $zero, 0x78 #addr; addi $t1, $zero, 0x3 #data
 	 */
-	(OP_ADDI | RT_SET(REG_T0) | RS_SET(REG_ZERO) | IMM_SET(0x3e)),
+	(OP_ADDI | RT_SET(REG_T0) | RS_SET(REG_ZERO) | IMM_SET(0x78)),
 	(OP_ADDI | RT_SET(REG_T1) | RS_SET(REG_ZERO) | IMM_SET(0x3)),
-	/* Copy 0x3 to Mem Addr 0x3e: sw $t1, 0x0($t0) */
+	/* Copy 0x3 to Mem Addr 0x78: sw $t1, 0x0($t0) */
 	(OP_SW | RS_SET(REG_T0) | RT_SET(REG_T1) | IMM_SET(0x0)),
 	/*
 	 * Swap them: (Note: $t2, $t0 are addresses)
@@ -82,7 +82,7 @@ struct best_cpu_flags {
 
 struct best_cpu {
 	struct best_cpu_flags flags;
-	s32 mem[MEM_MAX];
+	s32 mem[MEM_MAX / 4];
 	s32 mem_data;
 	u32 mem_addr;
 	s32 reg_lo, reg_hi;
@@ -144,13 +144,24 @@ static void dump_reg_file(struct best_cpu *cpu, int mode)
 static void dump_data_mem(struct best_cpu *cpu, int mode)
 {
 	s32 *mem = &cpu->mem[cpu->mem_addr];
-	u32 i;
+	int i;
 
 	switch (mode) {
 	case DUMP_ALL:
-		for (i = MEM_DATA_START; i <= MEM_DATA_END; i++)
+		for (i = MEM_DATA_END; i >= 0; i -= 4) {
+			if (i == MEM_STACK_START)
+				pr_debug("------Stack Memory Starts\n");
+
 			pr_debug("\tMemory addr 0x%x, value 0x%x\n",
-				 i, cpu->mem[i]);
+				 i, cpu->mem[i / 4]);
+
+			if (i == MEM_INSTR_START)
+				pr_debug("------Instruction Memory Starts\n");
+			else if (i == MEM_DATA_START)
+				pr_debug("------Data Memory Starts (Heap)\n");
+			else if (i == MEM_STACK_LIMIT)
+				pr_debug("------Stack Memory Limits\n");
+		}
 		break;
 	case DUMP_CHANGED:
 		pr_debug("\tMemory addr 0x%x value changed from 0x%x to 0x%x\n",
@@ -554,10 +565,14 @@ int running(struct best_cpu *cpu)
 	u32 ins;
 	int ret;
 
+	/* Initialize stack pointer and program counter */
+	cpu->reg[REG_SP] = MEM_STACK_START;
+	cpu->pc = MEM_INSTR_START;
+
 	/* Start to run from boot-up address */
-	for (cpu->pc = MEM_INSTR_START; cpu->pc <= MEM_INSTR_END; cpu->pc++) {
+	for (; cpu->pc <= MEM_INSTR_END; cpu->pc += 4) {
 		/* Fetch the instruction being pointed by PC */
-		ins = cpu->mem[cpu->pc];
+		ins = cpu->mem[cpu->pc / 4];
 		/* Reset all flags */
 		memset(flags, 0, sizeof(*flags));
 
@@ -615,7 +630,7 @@ int running(struct best_cpu *cpu)
 
 		/* Back up for back trace */
 		cpu->mem_addr = alu_result;
-		cpu->mem_data = mem[alu_result];
+		cpu->mem_data = mem[alu_result / 4];
 
 		if ((signals.mem_write || signals.mem_to_reg) &&
 		    alu_result < MEM_DATA_START)
@@ -626,9 +641,9 @@ int running(struct best_cpu *cpu)
 
 		/* Memory operations */
 		if (signals.mem_write)
-			mem[alu_result] = reg[rt];
+			mem[alu_result / 4] = reg[rt];
 		else
-			mem_read_data = mem[alu_result];
+			mem_read_data = mem[alu_result / 4];
 
 		result = signals.mem_to_reg ? mem_read_data : alu_result;
 
@@ -644,6 +659,12 @@ int running(struct best_cpu *cpu)
 
 			/* Overwrite the register */
 			reg[cpu->reg_addr] = result;
+		}
+
+		if (reg[REG_SP] < MEM_STACK_LIMIT ||
+		    reg[REG_SP] > MEM_STACK_START) {
+			printf("\tSegmentation fault!\n");
+			flags->segment = true;
 		}
 
 out_of_stage:
