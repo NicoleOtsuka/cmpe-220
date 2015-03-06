@@ -109,6 +109,7 @@
  *			  001100 -> SYSCALL -- System call
  *			  010000 -> MFHI -- Move from HI
  *			  010010 -> MFLO -- Move from Load
+ *			  010011 -> MFC -- Move from EPC
  *			  011000 -> MULT -- Multiply
  *			  011001 -> MULTU -- Multiply unsigned
  *			  011010 -> DIV -- Divide
@@ -194,6 +195,7 @@
 #define FUNCT_SYSCALL	(0xC << FUNCT_OFFSET)
 #define FUNCT_MFHI	(0x10 << FUNCT_OFFSET)
 #define FUNCT_MFLO	(0x12 << FUNCT_OFFSET)
+#define FUNCT_MFC	(0x13 << FUNCT_OFFSET)
 #define FUNCT_MULT	(0x18 << FUNCT_OFFSET)
 #define FUNCT_MULTU	(0x19 << FUNCT_OFFSET)
 #define FUNCT_DIV	(0x1A << FUNCT_OFFSET)

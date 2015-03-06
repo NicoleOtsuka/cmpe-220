@@ -87,6 +87,7 @@ struct best_cpu {
 	u32 mem_addr;
 	s32 reg_lo, reg_hi;
 	s32 reg[REG_MAX];
+	u32 reg_epc;
 	s32 reg_data;
 	u32 reg_addr;
 	u32 pc;
@@ -143,7 +144,7 @@ static void dump_reg_file(struct best_cpu *cpu, int mode)
 
 static void dump_data_mem(struct best_cpu *cpu, int mode)
 {
-	s32 *mem = &cpu->mem[cpu->mem_addr];
+	s32 *mem = &cpu->mem[cpu->mem_addr / 4];
 	int i;
 
 	switch (mode) {
@@ -595,12 +596,14 @@ int running(struct best_cpu *cpu)
 		imm = IMM_GET(ins);
 		target = TARGET_GET(ins);
 
-		/* Sign extension for immediate number */
-		if (imm & 0x8000)
-			imm |= 0xffff0000;
-
-		/* Direct copy for LO and HI registers */
+		/* Direct copy for EPC, LO and HI registers */
 		switch (opcode | funct) {
+		case FUNCT_MFC:
+			cpu->reg_addr = rd;
+			cpu->reg_data = cpu->reg[rd];
+			signals.reg_write = true;
+			reg[rd] = cpu->reg_epc;
+			goto out_of_stage;
 		case FUNCT_MFLO:
 			cpu->reg_addr = rd;
 			cpu->reg_data = cpu->reg[rd];
@@ -622,15 +625,28 @@ int running(struct best_cpu *cpu)
 		if (ret)
 			return ret;
 
+		/* Sign extension for immediate number */
+		if (!signals.alu_unsigned && (imm & 0x8000))
+			imm |= 0xffff0000;
+
 		srcA = reg[rs];
 		srcB = signals.alu_src ? imm : reg[rt];
 
 		alu_exec(flags, signals.alu_unsigned, signals.alu_control,
 			 srcA, srcB, &alu_result, &cpu->reg_lo, &cpu->reg_hi);
 
+		/* Store the instruction causing overflow in register epc */
+		if (flags->overflow) {
+			cpu->reg_epc = cpu->pc;
+			pr_debug("Insuction (%x) @ MemAddr %x casued overflow!\n",
+				 ins, cpu->pc);
+		}
+
 		/* Back up for back trace */
-		cpu->mem_addr = alu_result;
-		cpu->mem_data = mem[alu_result / 4];
+		if (signals.mem_write || signals.mem_to_reg) {
+			cpu->mem_addr = alu_result;
+			cpu->mem_data = mem[alu_result / 4];
+		}
 
 		if ((signals.mem_write || signals.mem_to_reg) &&
 		    alu_result < MEM_DATA_START)
@@ -642,7 +658,7 @@ int running(struct best_cpu *cpu)
 		/* Memory operations */
 		if (signals.mem_write)
 			mem[alu_result / 4] = reg[rt];
-		else
+		else if (signals.mem_to_reg)
 			mem_read_data = mem[alu_result / 4];
 
 		result = signals.mem_to_reg ? mem_read_data : alu_result;
