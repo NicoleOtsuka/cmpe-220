@@ -481,14 +481,14 @@ bool alu_exec_div(bool alu_unsigned, s32 srcA, s32 srcB,
 
 	/* Restore the sign bit for remainder and result */
 	if (signedA)
-		*reg_hi = 0 - remainder;
+		alu_exec_sub(0, remainder, reg_hi);
 	else
 		*reg_hi = remainder;
 
 	if ((signedA && signedB) || (!signedA && !signedB))
 		*reg_lo = quotient;
 	else
-		*reg_lo = 0 - quotient;
+		alu_exec_sub(0, quotient, reg_lo);
 
 	return (*reg_lo == 0);
 }
