@@ -92,6 +92,14 @@
  *	100011 -> I-type: LW -- Load word
  *	101000 -> I-type: SB -- Store byte
  *	101011 -> I-type: SW -- Store word
+ *	110000 -> LEA: Load effective address
+ *		       Structure:
+ *			6-bit opcode
+ *			5-bit rs
+ *			5-bit rt
+ *			5-bit rd
+ *			5-bit shift amount
+ *			6-bit displacement (function code)
  *
  * The lower 26 bits for three types:
  *	1) R-type:
@@ -159,6 +167,8 @@
 #define OP_LW		(0x23 << OP_OFFSET)
 #define OP_SB		(0x28 << OP_OFFSET)
 #define OP_SW		(0x2B << OP_OFFSET)
+/* LEA instruction: $rd = mem[$rs + $rt * shamt + d]; */
+#define OP_LEA		(0x30 << OP_OFFSET)
 
 #define RS_WIDTH	5
 #define RS_OFFSET	21

@@ -96,6 +96,7 @@ struct best_cpu {
 /**
  * Data structure for control signals
  *
+ * @lea: LEA/LEAD instruction
  * @mem_to_reg: Selects the data path from data memory instead of from ALU
  * @mem_write: Enables memory write operation for SW like instructions
  * @alu_src: Selects immediate number to take part in ALU operations
@@ -107,6 +108,7 @@ struct best_cpu {
  * @branch: Enable branch operations
  */
 struct control_signals {
+	bool lea;
 	bool mem_to_reg;
 	bool mem_write;
 	bool alu_src;
@@ -298,6 +300,11 @@ int control_unit_decoder(struct best_cpu_flags *flags,
 	case OP_SW:
 		signals->alu_src = true;
 		signals->mem_write = true;
+		break;
+	case OP_LEA:
+		signals->reg_write = true;
+		signals->reg_dst = true;
+		signals->lea = true;
 		break;
 	default:
 		flags->unknowinstr = true;
@@ -638,6 +645,21 @@ void alu_exec(struct best_cpu_flags *flags, bool alu_unsigned, u32 control,
 	return;
 }
 
+void alu_lea_exec(struct best_cpu_flags *flags, s32 srcA, s32 srcB,
+		  s32 shamt, s32 d, s32 *result)
+{
+	bool zero;
+
+	zero = alu_exec_mul(srcB, shamt, result);
+	alu_exec_add(srcA, *result, result);
+	alu_exec_add(d, *result, result);
+
+	flags->zero = (*result == 0) | zero;
+	flags->sign = *result < 0;
+	flags->overflow = (srcA > 0 && srcB > 0 && *result < 0) ||
+			  (srcA < 0 && srcB < 0 && *result >= 0);
+}
+
 int running(struct best_cpu *cpu)
 {
 	struct best_cpu_flags *flags = &cpu->flags;
@@ -737,8 +759,13 @@ int running(struct best_cpu *cpu)
 		/* Override srcB for some branch instructions */
 		control_unit_branch_pre(cpu, signals.branch, &srcB);
 
-		alu_exec(flags, signals.alu_unsigned, signals.alu_control,
-			 srcA, srcB, &alu_result, &cpu->reg_lo, &cpu->reg_hi);
+		if (signals.lea)
+			alu_lea_exec(flags, srcA, srcB, shamt,
+				     funct, &alu_result);
+		else
+			alu_exec(flags, signals.alu_unsigned,
+				 signals.alu_control, srcA, srcB, &alu_result,
+				 &cpu->reg_lo, &cpu->reg_hi);
 
 		pc_source = contorl_unit_branch_post(signals.branch,
 						     flags->zero, flags->sign);
