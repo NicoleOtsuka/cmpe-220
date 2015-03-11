@@ -93,16 +93,29 @@ struct best_cpu {
 	u32 pc;
 };
 
+/**
+ * Data structure for control signals
+ *
+ * @mem_to_reg: Selects the data path from data memory instead of from ALU
+ * @mem_write: Enables memory write operation for SW like instructions
+ * @alu_src: Selects immediate number to take part in ALU operations
+ * @reg_dst: Selects the 3rd register in the instructions to update (R-type)
+ * @reg_write: Enables register write operation
+ * @jump: Generates a separate signal to enable jump instruction
+ * @alu_unsigned: Lets alu do unsigned operations
+ * @alu_control: Selects a specific function of ALU (ADD, SUB, MULT and etc.)
+ * @branch: Enable branch operations
+ */
 struct control_signals {
 	bool mem_to_reg;
 	bool mem_write;
-	bool branch;
 	bool alu_src;
 	bool reg_dst;
 	bool reg_write;
 	bool jump;
 	bool alu_unsigned;
 	u8 alu_control;
+	u8 branch;
 };
 
 static void dump_cpu_flags(struct best_cpu_flags *flags)
@@ -174,7 +187,7 @@ static void dump_data_mem(struct best_cpu *cpu, int mode)
 
 int control_unit_decoder(struct best_cpu_flags *flags,
 			 struct control_signals *signals,
-			 u32 opcode, u32 funct)
+			 u32 opcode, u32 funct, u32 rt)
 {
 	u8 alu_op = ALU_OP_ADD;
 
@@ -189,26 +202,47 @@ int control_unit_decoder(struct best_cpu_flags *flags,
 		alu_op = ALU_OP_RTYPE;
 		break;
 	case OP_BGEZ:
-		/* TODO activate corresponding signals */
+		switch (rt) {
+		case RT_BGEZ:
+			signals->branch = BRANCH_BGEZ;
+			break;
+		case RT_BGEZAL:
+			signals->branch = BRANCH_BGEZAL;
+			break;
+		case RT_BLTZ:
+			signals->branch = BRANCH_BLTZ;
+			break;
+		case RT_BLTZAL:
+			signals->branch = BRANCH_BLTZAL;
+			break;
+		default:
+			flags->unknowinstr = true;
+			printf("\tUndefined insuction! branch RT: %x\n", rt);
+			return -EINVAL;
+		}
+		alu_op = ALU_OP_SUB;
 		break;
 	case OP_J:
 		signals->jump = true;
 		break;
 	case OP_JAL:
-		/* TODO activate corresponding signals */
+		signals->jump = true;
 		break;
 	case OP_BEQ:
-		signals->branch = true;
+		signals->branch = BRANCH_BEQ;
 		alu_op = ALU_OP_SUB;
 		break;
 	case OP_BNE:
-		/* TODO activate corresponding signals */
+		signals->branch = BRANCH_BNE;
+		alu_op = ALU_OP_SUB;
 		break;
 	case OP_BLEZ:
-		/* TODO activate corresponding signals */
+		signals->branch = BRANCH_BLEZ;
+		alu_op = ALU_OP_SUB;
 		break;
 	case OP_BGTZ:
-		/* TODO activate corresponding signals */
+		signals->branch = BRANCH_BGTZ;
+		alu_op = ALU_OP_SUB;
 		break;
 	case OP_ADDI:
 		signals->reg_write = true;
@@ -387,6 +421,61 @@ int control_unit_decoder(struct best_cpu_flags *flags,
 	return 0;
 }
 
+void control_unit_branch_pre(struct best_cpu *cpu, u8 branch, s32 *srcB)
+{
+	switch (branch) {
+	case BRANCH_BGEZAL:
+	case BRANCH_BLTZAL:
+		cpu->reg[REG_RA] = cpu->pc + 8;
+	case BRANCH_BGEZ:
+	case BRANCH_BLEZ:
+	case BRANCH_BGTZ:
+	case BRANCH_BLTZ:
+		*srcB = 0;
+		break;
+	default:
+		break;
+	}
+}
+
+bool contorl_unit_branch_post(u8 branch, bool zero, bool sign)
+{
+	bool ret = false;
+
+	switch (branch) {
+	case BRANCH_BEQ:
+		if (zero)
+			ret = true;
+		break;
+	case BRANCH_BGEZ:
+	case BRANCH_BGEZAL:
+		if (!sign)
+			ret = true;
+		break;
+	case BRANCH_BNE:
+		if (!zero)
+			ret = true;
+		break;
+	case BRANCH_BLEZ:
+		if (sign || zero)
+			ret = true;
+		break;
+	case BRANCH_BGTZ:
+		if (!sign && !zero)
+			ret = true;
+		break;
+	case BRANCH_BLTZ:
+	case BRANCH_BLTZAL:
+		if (sign)
+			ret = true;
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
 bool alu_exec_add(s32 srcA, s32 srcB, s32 *result)
 {
 	int c = 0;
@@ -553,6 +642,7 @@ int running(struct best_cpu *cpu)
 {
 	struct best_cpu_flags *flags = &cpu->flags;
 	struct control_signals signals;
+	bool pc_source = false;
 	s32 mem_read_data = 0;
 	s32 *reg = cpu->reg;
 	s32 *mem = cpu->mem;
@@ -571,18 +661,22 @@ int running(struct best_cpu *cpu)
 	cpu->pc = MEM_INSTR_START;
 
 	/* Start to run from boot-up address */
-	for (; cpu->pc <= MEM_INSTR_END; cpu->pc += 4) {
+	while (cpu->pc <= MEM_INSTR_END) {
 		/* Fetch the instruction being pointed by PC */
 		ins = cpu->mem[cpu->pc / 4];
-		/* Reset all flags */
+		/* Reset all flags and signals */
 		memset(flags, 0, sizeof(*flags));
+		memset(&signals, 0, sizeof(signals));
 
 		pr_debug("Executing Machine Code: 0x%x@I-MEM Addr:0x%x\n",
 			 ins, cpu->pc);
 
 		/* Pre-check: bypass for NOP; exit for SHUTDOWN */
-		if (ins == NOP)
+		if (ins == NOP) {
+			cpu->pc += 4;
 			continue;
+		}
+
 		else if (ins == SHUTDOWN)
 			return 0;
 
@@ -595,6 +689,14 @@ int running(struct best_cpu *cpu)
 		funct = FUNCT_GET(ins);
 		imm = IMM_GET(ins);
 		target = TARGET_GET(ins);
+
+		if (opcode == OP_J || opcode == OP_JAL) {
+			if (opcode == OP_JAL)
+				cpu->reg[REG_RA] = cpu->pc + 8;
+			cpu->pc = ((cpu->pc + 4) & 0xf0000000) | (target << 2);
+			pr_debug("\tJump to new pc: 0x%x\n", cpu->pc);
+			continue;
+		}
 
 		/* Direct copy for EPC, LO and HI registers */
 		switch (opcode | funct) {
@@ -621,7 +723,7 @@ int running(struct best_cpu *cpu)
 		}
 
 		/* Parse the instruction and activate corresponding signals */
-		ret = control_unit_decoder(flags, &signals, opcode, funct);
+		ret = control_unit_decoder(flags, &signals, opcode, funct, rt);
 		if (ret)
 			return ret;
 
@@ -632,8 +734,21 @@ int running(struct best_cpu *cpu)
 		srcA = reg[rs];
 		srcB = signals.alu_src ? imm : reg[rt];
 
+		/* Override srcB for some branch instructions */
+		control_unit_branch_pre(cpu, signals.branch, &srcB);
+
 		alu_exec(flags, signals.alu_unsigned, signals.alu_control,
 			 srcA, srcB, &alu_result, &cpu->reg_lo, &cpu->reg_hi);
+
+		pc_source = contorl_unit_branch_post(signals.branch,
+						     flags->zero, flags->sign);
+
+		/* Branch taken */
+		if (pc_source) {
+			cpu->pc += 4 + (imm << 2);
+			pr_debug("\tBranch taken to new pc: 0x%x\n", cpu->pc);
+			continue;
+		}
 
 		/* Store the instruction causing overflow in register epc */
 		if (flags->overflow) {
@@ -691,6 +806,9 @@ out_of_stage:
 			dump_reg_file(cpu, DUMP_POLICY);
 
 		dump_cpu_flags(flags);
+
+		/* Normally increase program counter */
+		cpu->pc += 4;
 	}
 
 	return 0;

@@ -137,7 +137,10 @@
 #define OP_OFFSET	26
 #define OP_MASK		(((1 << OP_WIDTH) - 1) << OP_OFFSET)
 #define OP_RTYPE	(0x0 << OP_OFFSET)
+#define OP_BLTZ		(0x1 << OP_OFFSET)
+#define OP_BLTZAL	(0x1 << OP_OFFSET)
 #define OP_BGEZ		(0x1 << OP_OFFSET)
+#define OP_BGEZAL	(0x1 << OP_OFFSET)
 #define OP_J		(0x2 << OP_OFFSET)
 #define OP_JAL		(0x3 << OP_OFFSET)
 #define OP_BEQ		(0x4 << OP_OFFSET)
@@ -168,6 +171,12 @@
 #define RT_MASK		(((1 << RT_WIDTH) - 1) << RT_OFFSET)
 #define RT_SET(x)	(((x) << RT_OFFSET) & RT_MASK)
 #define RT_GET(x)	(((x) & RT_MASK) >> RT_OFFSET)
+
+/* Some special configurations using RT for branch insturctions */
+#define RT_BGEZ		0x1
+#define RT_BGEZAL	0x11
+#define RT_BLTZ		0x0
+#define RT_BLTZAL	0x10
 
 #define RD_WIDTH	5
 #define RD_OFFSET	11
@@ -241,5 +250,14 @@
 #define ALU_CTL_XOR	0x5
 #define ALU_CTL_SUB	0x6
 #define ALU_CTL_SLT	0x7
+
+#define BRANCH_BEQ	0x1
+#define BRANCH_BGEZ	0x2
+#define BRANCH_BGEZAL	0x3
+#define BRANCH_BNE	0x4
+#define BRANCH_BLEZ	0x5
+#define BRANCH_BGTZ	0x6
+#define BRANCH_BLTZ	0x7
+#define BRANCH_BLTZAL	0x8
 
 #endif /* _BEST_CPU_H_ */
