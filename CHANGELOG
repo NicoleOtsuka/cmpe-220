@@ -1,0 +1,11 @@
+HW3:
+ * Added standard JUMP and BRANCH instructions of MIPS ISA.
+ * Added a unique LEA instruction (from IA32).
+   (Created a new type for LEA instruction by following the equation:
+    rd = rs + rt * shamt + funct;)
+HW2:
+ * Added stack pointer that uses ADDI to move the pointer up and down.
+ * Added full ALU support, implemented by using bitwise operations only.
+HW1:
+ * Added an initial implementation of a MIPS architecture CPU.
+ * Only supports the basic SW, LW, MOVE (ADDU) instructions.
