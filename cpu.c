@@ -603,6 +603,9 @@ void alu_exec(struct best_cpu_flags *flags, bool alu_unsigned, u32 control,
 	case ALU_CTL_SUB:
 		/* Bitwise subtraction does not care about sign */
 		carry = alu_exec_sub(srcA,  srcB, result);
+		/* Flip the sign bit to make sure overflow flag correct */
+		if (!alu_unsigned)
+			alu_exec_sub(0, srcB, &srcB);
 		break;
 	case ALU_CTL_MUL:
 		/* Bitwise multiplication does not care about sign */
@@ -636,11 +639,13 @@ void alu_exec(struct best_cpu_flags *flags, bool alu_unsigned, u32 control,
 	}
 
 	flags->zero = (*result == 0) | zero;
-	flags->sign = *result < 0;
+	if (!alu_unsigned)
+		flags->sign = *result < 0;
 	if (alu_unsigned)
 		flags->carry = carry;
-	flags->overflow = (srcA > 0 && srcB > 0 && *result < 0) ||
-			  (srcA < 0 && srcB < 0 && *result >= 0);
+	if (!alu_unsigned)
+		flags->overflow = (srcA > 0 && srcB > 0 && *result < 0) ||
+				  (srcA < 0 && srcB < 0 && *result >= 0);
 
 	return;
 }
@@ -648,16 +653,9 @@ void alu_exec(struct best_cpu_flags *flags, bool alu_unsigned, u32 control,
 void alu_lea_exec(struct best_cpu_flags *flags, s32 srcA, s32 srcB,
 		  s32 shamt, s32 d, s32 *result)
 {
-	bool zero;
-
-	zero = alu_exec_mul(srcB, shamt, result);
+	alu_exec_mul(srcB, shamt, result);
 	alu_exec_add(srcA, *result, result);
 	alu_exec_add(d, *result, result);
-
-	flags->zero = (*result == 0) | zero;
-	flags->sign = *result < 0;
-	flags->overflow = (srcA > 0 && srcB > 0 && *result < 0) ||
-			  (srcA < 0 && srcB < 0 && *result >= 0);
 }
 
 int running(struct best_cpu *cpu)
