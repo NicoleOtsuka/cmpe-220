@@ -260,6 +260,9 @@
 #define ALU_CTL_XOR	0x5
 #define ALU_CTL_SUB	0x6
 #define ALU_CTL_SLT	0x7
+#define ALU_CTL_SLL	0x8
+#define ALU_CTL_SRL	0x9
+#define ALU_CTL_SRA	0xA
 
 #define BRANCH_BEQ	0x1
 #define BRANCH_BGEZ	0x2

@@ -97,6 +97,7 @@ struct best_cpu {
  * Data structure for control signals
  *
  * @lea: LEA/LEAD instruction
+ * @shift: shift instructions that use the shift amount field
  * @mem_to_reg: Selects the data path from data memory instead of from ALU
  * @mem_write: Enables memory write operation for SW like instructions
  * @alu_src: Selects immediate number to take part in ALU operations
@@ -108,13 +109,14 @@ struct best_cpu {
  */
 struct control_signals {
 	bool lea;
+	bool shift;
 	bool mem_to_reg;
 	bool mem_write;
 	bool alu_src;
 	bool reg_dst;
 	bool reg_write;
 	bool alu_unsigned;
-	u8 alu_control;
+	u16 alu_control;
 	u8 branch;
 };
 
@@ -337,19 +339,24 @@ int control_unit_decoder(struct best_cpu_flags *flags,
 	case ALU_OP_RTYPE:
 		switch (funct) {
 		case FUNCT_SLL:
-			/* TODO activate the alu_control signals */
+			signals->shift = true;
+			signals->alu_control = ALU_CTL_SLL;
 			break;
 		case FUNCT_SRL:
-			/* TODO activate the alu_control signals */
+			signals->shift = true;
+			signals->alu_control = ALU_CTL_SRL;
 			break;
 		case FUNCT_SRA:
-			/* TODO activate the alu_control signals */
+			signals->shift = true;
+			signals->alu_control = ALU_CTL_SRA;
 			break;
 		case FUNCT_SLLV:
-			/* TODO activate the alu_control signals */
+			/* No shift signal as it uses RS instead of SHAMT */
+			signals->alu_control = ALU_CTL_SLL;
 			break;
 		case FUNCT_SRLV:
-			/* TODO activate the alu_control signals */
+			/* No shift signal as it uses RS instead of SHAMT */
+			signals->alu_control = ALU_CTL_SRL;
 			break;
 		case FUNCT_JR:
 			break;
@@ -629,6 +636,15 @@ void alu_exec(struct best_cpu_flags *flags, bool alu_unsigned, u32 control,
 		else
 			*result = srcA < srcB;
 		break;
+	case ALU_CTL_SLL:
+		*result = srcB << srcA;
+		break;
+	case ALU_CTL_SRL:
+		*result = (u32)srcB >> srcA;
+		break;
+	case ALU_CTL_SRA:
+		*result = srcB >> srcA;
+		break;
 	default:
 		break;
 	}
@@ -751,7 +767,7 @@ int running(struct best_cpu *cpu)
 		if (!signals.alu_unsigned && (imm & 0x8000))
 			imm |= 0xffff0000;
 
-		srcA = reg[rs];
+		srcA = signals.shift ? shamt : reg[rs];
 		srcB = signals.alu_src ? imm : reg[rt];
 
 		/* Override srcB for some branch instructions */
