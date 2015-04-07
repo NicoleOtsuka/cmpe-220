@@ -600,18 +600,18 @@ void alu_exec(struct best_cpu_flags *flags, bool alu_unsigned, u32 control,
 	switch (control) {
 	case ALU_CTL_ADD:
 		/* Bitwise addition does not care about sign */
-		carry = alu_exec_add(srcA,  srcB, result);
+		carry = alu_exec_add(srcA, srcB, result);
 		break;
 	case ALU_CTL_SUB:
 		/* Bitwise subtraction does not care about sign */
-		carry = alu_exec_sub(srcA,  srcB, result);
+		carry = alu_exec_sub(srcA, srcB, result);
 		/* Flip the sign bit to make sure overflow flag correct */
 		if (!alu_unsigned)
 			alu_exec_sub(0, srcB, &srcB);
 		break;
 	case ALU_CTL_MUL:
 		/* Bitwise multiplication does not care about sign */
-		zero = alu_exec_mul(srcA,  srcB, reg_lo);
+		zero = alu_exec_mul(srcA, srcB, reg_lo);
 		break;
 	case ALU_CTL_DIV:
 		/* Bypass divided by zero */
@@ -619,7 +619,7 @@ void alu_exec(struct best_cpu_flags *flags, bool alu_unsigned, u32 control,
 			flags->divbyzero = true;
 			return;
 		}
-		zero = alu_exec_div(alu_unsigned, srcA,  srcB, reg_lo, reg_hi);
+		zero = alu_exec_div(alu_unsigned, srcA, srcB, reg_lo, reg_hi);
 		break;
 	case ALU_CTL_AND:
 		*result = srcA & srcB;
