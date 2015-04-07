@@ -54,15 +54,15 @@
 /* TODO float Point support needs Float/Double type registers */
 
 /* Total Memory Size */
-#define MEM_MAX		256
+#define MEM_MAX		1024
 #define MEM_DATA_END	(MEM_MAX - 4)
-#define MEM_DATA_START	96
+#define MEM_DATA_START	256
 #define MEM_INSTR_END	(MEM_DATA_START - 4)
 #define MEM_INSTR_START	0
 
 /* The start address of the stack is the largest valid address */
 #define MEM_STACK_START	MEM_DATA_END
-#define MEM_STACK_LIMIT	188
+#define MEM_STACK_LIMIT	512
 
 /*
  * Machine Code Description (Starting from MSB)
