@@ -356,7 +356,7 @@ int control_unit_decoder(struct best_cpu_flags *flags,
 			/* TODO activate the alu_control signals */
 			break;
 		case FUNCT_JR:
-			/* TODO activate the alu_control signals */
+			signals->jump = true;
 			break;
 		case FUNCT_SYSCALL:
 			/* TODO activate the alu_control signals */
@@ -710,10 +710,15 @@ int running(struct best_cpu *cpu)
 		imm = IMM_GET(ins);
 		target = TARGET_GET(ins);
 
-		if (opcode == OP_J || opcode == OP_JAL) {
+		if ((opcode == OP_RTYPE && funct == FUNCT_JR) ||
+		    opcode == OP_J || opcode == OP_JAL) {
 			if (opcode == OP_JAL)
 				cpu->reg[REG_RA] = cpu->pc + 8;
-			cpu->pc = ((cpu->pc + 4) & 0xf0000000) | (target << 2);
+			if (opcode == OP_RTYPE && funct == FUNCT_JR)
+				cpu->pc = cpu->reg[rs];
+			else
+				cpu->pc = ((cpu->pc + 4) & 0xf0000000) |
+					  (target << 2);
 			pr_debug("\tJump to new pc: 0x%x\n", cpu->pc);
 			continue;
 		}
