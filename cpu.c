@@ -102,7 +102,6 @@ struct best_cpu {
  * @alu_src: Selects immediate number to take part in ALU operations
  * @reg_dst: Selects the 3rd register in the instructions to update (R-type)
  * @reg_write: Enables register write operation
- * @jump: Generates a separate signal to enable jump instruction
  * @alu_unsigned: Lets alu do unsigned operations
  * @alu_control: Selects a specific function of ALU (ADD, SUB, MULT and etc.)
  * @branch: Enable branch operations
@@ -114,7 +113,6 @@ struct control_signals {
 	bool alu_src;
 	bool reg_dst;
 	bool reg_write;
-	bool jump;
 	bool alu_unsigned;
 	u8 alu_control;
 	u8 branch;
@@ -225,10 +223,8 @@ int control_unit_decoder(struct best_cpu_flags *flags,
 		alu_op = ALU_OP_SUB;
 		break;
 	case OP_J:
-		signals->jump = true;
 		break;
 	case OP_JAL:
-		signals->jump = true;
 		break;
 	case OP_BEQ:
 		signals->branch = BRANCH_BEQ;
@@ -356,7 +352,6 @@ int control_unit_decoder(struct best_cpu_flags *flags,
 			/* TODO activate the alu_control signals */
 			break;
 		case FUNCT_JR:
-			signals->jump = true;
 			break;
 		case FUNCT_SYSCALL:
 			/* TODO activate the alu_control signals */
