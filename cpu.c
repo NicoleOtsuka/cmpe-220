@@ -435,7 +435,7 @@ void control_unit_branch_pre(struct best_cpu *cpu, u8 branch, s32 *srcB)
 	switch (branch) {
 	case BRANCH_BGEZAL:
 	case BRANCH_BLTZAL:
-		cpu->reg[REG_RA] = cpu->pc + 8;
+		cpu->reg[REG_RA] = cpu->pc + 4;
 	case BRANCH_BGEZ:
 	case BRANCH_BLEZ:
 	case BRANCH_BGTZ:
@@ -724,7 +724,7 @@ int running(struct best_cpu *cpu)
 		if ((opcode == OP_RTYPE && funct == FUNCT_JR) ||
 		    opcode == OP_J || opcode == OP_JAL) {
 			if (opcode == OP_JAL)
-				cpu->reg[REG_RA] = cpu->pc + 8;
+				cpu->reg[REG_RA] = cpu->pc + 4;
 			if (opcode == OP_RTYPE && funct == FUNCT_JR)
 				cpu->pc = cpu->reg[rs];
 			else
